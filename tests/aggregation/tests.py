@@ -2126,6 +2126,15 @@ class AggregateTestCase(TestCase):
         qs = Publisher.objects.filter(pk__in=author_qs)
         self.assertCountEqual(qs, [self.p1, self.p2, self.p3, self.p4])
 
+    def test_having_with_no_group_by(self):
+        author_qs = (
+            Author.objects.values(static_value=Value("static-value"))
+            .annotate(sum=Sum("age"))
+            .filter(sum__gte=0)
+            .values_list("sum", flat=True)
+        )
+        self.assertEqual(list(author_qs), [337])
+
 
 class AggregateAnnotationPruningTests(TestCase):
     @classmethod
@@ -2300,3 +2309,15 @@ class AggregateAnnotationPruningTests(TestCase):
             aggregate,
             {"sum_avg_publisher_pages": 1100.0, "books_count": 2},
         )
+
+    def test_aggregate_reference_lookup_rhs(self):
+        aggregates = Author.objects.annotate(
+            max_book_author=Max("book__authors"),
+        ).aggregate(count=Count("id", filter=Q(id=F("max_book_author"))))
+        self.assertEqual(aggregates, {"count": 1})
+
+    def test_aggregate_reference_lookup_rhs_iter(self):
+        aggregates = Author.objects.annotate(
+            max_book_author=Max("book__authors"),
+        ).aggregate(count=Count("id", filter=Q(id__in=[F("max_book_author"), 0])))
+        self.assertEqual(aggregates, {"count": 1})
